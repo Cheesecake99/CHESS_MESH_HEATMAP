@@ -4,9 +4,9 @@ A Python-based chess game visualizer that displays games as interactive heatmaps
 
 ## Demo
 
-[Watch the demo video](chess_game_pieces.mp4)
+![Chess Game Animation](demo.gif)
 
-![Chess Heatmap](https://raw.githubusercontent.com/Cheesecake99/CHESS_MESH_HEATMAP/main/chess_game_pieces.mp4)
+Full video: [chess_game_pieces.mp4](chess_game_pieces.mp4)
 
 ## Features
 
