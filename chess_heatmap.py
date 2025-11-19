@@ -31,6 +31,59 @@ class ChessHeatmapVisualizer:
     def __init__(self):
         self.board_states: List[np.ndarray] = []
         self.moves_list: List[str] = []
+        self.board_objects: List[chess.Board] = []  # Store actual board objects
+        
+    def get_attack_rays(self, board: chess.Board) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """
+        Get all attack rays where a piece can capture an enemy piece.
+        Returns list of tuples: ((from_row, from_col), (to_row, to_col))
+        """
+        rays = []
+        
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece:
+                # Get all legal moves from this square
+                for move in board.legal_moves:
+                    if move.from_square == square:
+                        # Check if this move is a capture
+                        target_piece = board.piece_at(move.to_square)
+                        if target_piece and target_piece.color != piece.color:
+                            # Convert squares to row, col
+                            from_row = 7 - chess.square_rank(move.from_square)
+                            from_col = chess.square_file(move.from_square)
+                            to_row = 7 - chess.square_rank(move.to_square)
+                            to_col = chess.square_file(move.to_square)
+                            rays.append(((from_row, from_col), (to_row, to_col)))
+        
+        return rays
+    
+    def get_path_squares(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> List[Tuple[int, int]]:
+        """
+        Get all squares along the path from one position to another.
+        Returns list of (row, col) tuples representing the path.
+        """
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        path = []
+        
+        # Calculate direction
+        delta_row = to_row - from_row
+        delta_col = to_col - from_col
+        
+        # Determine step size
+        steps = max(abs(delta_row), abs(delta_col))
+        
+        if steps == 0:
+            return [(from_row, from_col)]
+        
+        # Generate all squares along the path
+        for i in range(steps + 1):
+            row = from_row + (delta_row * i) // steps
+            col = from_col + (delta_col * i) // steps
+            path.append((row, col))
+        
+        return path
         
     def get_board_heatmap(self, board: chess.Board) -> np.ndarray:
         """
@@ -69,18 +122,21 @@ class ChessHeatmapVisualizer:
         """Process a chess game and generate all board states"""
         self.board_states = []
         self.moves_list = []
+        self.board_objects = []
         
         board = game.board()
         
         # Add initial position
         self.board_states.append(self.get_board_heatmap(board))
         self.moves_list.append("Initial Position")
+        self.board_objects.append(board.copy())
         
         # Process each move
         for move_num, move in enumerate(game.mainline_moves(), 1):
             board.push(move)
             self.board_states.append(self.get_board_heatmap(board))
             self.moves_list.append(f"Move {move_num}: {move.uci()}")
+            self.board_objects.append(board.copy())
     
     def visualize_static(self, move_index: int = 0):
         """Display a static heatmap for a specific move"""
@@ -209,6 +265,16 @@ class ChessHeatmapVisualizer:
         timer = [None]
         is_updating = [False]  # Prevent concurrent updates
         
+        # Ray wave animation state
+        show_rays = [True]
+        ray_wave_phase = [0.0]  # Current phase of the wave animation
+        ray_pulse_count = [0]  # Count pulses - reset when position changes
+        max_pulses = 3  # Number of times rays pulse before stopping
+        ray_color = ['red']  # Adjustable ray color
+        ray_artists = []  # Store ray line artists for cleanup
+        ray_timer = [None]  # Manual timer for ray animation
+        last_position = [-1]  # Track position changes to reset pulses
+        
         # Create initial heatmap with colorbar
         initial_heatmap = sns.heatmap(self.board_states[0], 
                    annot=True, 
@@ -228,6 +294,99 @@ class ChessHeatmapVisualizer:
         ax.set_ylabel('Rank (8-1)', fontsize=12)
         ax.set_title(f'Chess Board Heatmap - {self.moves_list[0]} (1/{len(self.board_states)})', 
                     fontsize=14, fontweight='bold')
+        
+        def draw_ray_waves():
+            """Light up squares along attack paths with wave effect"""
+            nonlocal ray_artists
+            
+            # Clear previous highlights
+            for artist in ray_artists:
+                try:
+                    artist.remove()
+                except:
+                    pass
+            ray_artists = []
+            
+            if not show_rays[0] or current_move[0] >= len(self.board_objects):
+                return
+            
+            # Get attack rays for current position
+            board = self.board_objects[current_move[0]]
+            attack_rays = self.get_attack_rays(board)
+            
+            if not attack_rays:
+                return
+            
+            # For each attack ray, light up all squares along the path
+            for (from_pos, to_pos) in attack_rays:
+                path_squares = self.get_path_squares(from_pos, to_pos)
+                
+                # Draw pulsing light on each square in the path
+                for idx, (row, col) in enumerate(path_squares):
+                    # Wave effect: each square in path pulses with progressive delay
+                    # Wave travels FROM attacker TO target (starts at idx 0)
+                    wave_delay = idx / max(len(path_squares), 1)
+                    phase_offset = (ray_wave_phase[0] - wave_delay) % 1.0
+                    
+                    # Intensity pulses using sine wave
+                    intensity = 0.3 + 0.5 * np.sin(phase_offset * 2 * np.pi)
+                    
+                    # Only show if intensity is above threshold (creates traveling wave effect)
+                    if intensity > 0.35:
+                        # Light up the square
+                        rect = plt.Rectangle((col, row), 1, 1, 
+                                            facecolor=ray_color[0], 
+                                            alpha=intensity * 0.6,
+                                            zorder=5,
+                                            linewidth=0)
+                        ax.add_patch(rect)
+                        ray_artists.append(rect)
+            
+            fig.canvas.draw_idle()
+        
+        def update_ray_animation():
+            """Update the ray wave animation - called by timer"""
+            if not show_rays[0]:
+                return
+            
+            # Check if position changed - reset pulse counter
+            if last_position[0] != current_move[0]:
+                last_position[0] = current_move[0]
+                ray_pulse_count[0] = 0
+                ray_wave_phase[0] = 0.0
+            
+            # Only animate if we haven't completed max pulses
+            if ray_pulse_count[0] < max_pulses:
+                # Increment phase for wave motion
+                old_phase = ray_wave_phase[0]
+                ray_wave_phase[0] = (ray_wave_phase[0] + 0.15) % 1.0
+                
+                # Count completed pulses (when phase wraps around)
+                if ray_wave_phase[0] < old_phase:
+                    ray_pulse_count[0] += 1
+                
+                # Draw rays
+                draw_ray_waves()
+                
+                # Schedule next frame only if still pulsing
+                if ray_pulse_count[0] < max_pulses:
+                    try:
+                        if ray_timer[0]:
+                            ray_timer[0].stop()
+                    except:
+                        pass
+                    ray_timer[0] = fig.canvas.new_timer(interval=50)
+                    ray_timer[0].add_callback(update_ray_animation)
+                    ray_timer[0].start()
+                else:
+                    # Clear rays after final pulse
+                    for artist in ray_artists:
+                        try:
+                            artist.remove()
+                        except:
+                            pass
+                    ray_artists.clear()
+                    fig.canvas.draw_idle()
         
         def update_plot():
             # Prevent concurrent updates
@@ -259,6 +418,20 @@ class ChessHeatmapVisualizer:
                 ax.set_ylabel('Rank (8-1)', fontsize=12)
                 ax.set_title(f'Chess Board Heatmap - {self.moves_list[current_move[0]]} ({current_move[0]+1}/{len(self.board_states)})', 
                             fontsize=14, fontweight='bold')
+                
+                # Trigger ray animation for new position
+                if show_rays[0]:
+                    # Stop any existing timer
+                    if ray_timer[0]:
+                        try:
+                            ray_timer[0].stop()
+                        except:
+                            pass
+                    # Reset and start new pulse sequence
+                    ray_pulse_count[0] = 0
+                    ray_wave_phase[0] = 0.0
+                    last_position[0] = current_move[0]
+                    update_ray_animation()
                 
                 fig.canvas.draw()
                 fig.canvas.flush_events()
@@ -331,6 +504,45 @@ class ChessHeatmapVisualizer:
         def on_repeat_toggle(label):
             repeat_mode[0] = not repeat_mode[0]
         
+        def on_rays_toggle(label):
+            show_rays[0] = not show_rays[0]
+            if show_rays[0]:
+                # Restart ray animation
+                ray_pulse_count[0] = 0
+                ray_wave_phase[0] = 0.0
+                if ray_timer[0]:
+                    try:
+                        ray_timer[0].stop()
+                    except:
+                        pass
+                update_ray_animation()
+            else:
+                # Stop and clear rays when disabled
+                if ray_timer[0]:
+                    try:
+                        ray_timer[0].stop()
+                    except:
+                        pass
+                for artist in ray_artists:
+                    try:
+                        artist.remove()
+                    except:
+                        pass
+                ray_artists.clear()
+                fig.canvas.draw()
+        
+        def on_color_change(label):
+            color_map = {
+                'Red': 'red',
+                'Blue': 'blue',
+                'Green': 'lime',
+                'Yellow': 'yellow',
+                'Magenta': 'magenta',
+                'Cyan': 'cyan'
+            }
+            ray_color[0] = color_map.get(label, 'red')
+            draw_ray_waves()
+        
         def on_key(event):
             if event.key == 'right':
                 on_next(None)
@@ -364,9 +576,24 @@ class ChessHeatmapVisualizer:
         speed_slider.on_changed(on_speed_change)
         
         # Repeat checkbox
-        ax_repeat = plt.axes([0.65, 0.05, 0.15, 0.08])
+        ax_repeat = plt.axes([0.65, 0.08, 0.15, 0.04])
         repeat_check = CheckButtons(ax_repeat, ['Repeat'], [True])
         repeat_check.on_clicked(on_repeat_toggle)
+        
+        # Ray waves checkbox
+        ax_rays = plt.axes([0.65, 0.12, 0.15, 0.04])
+        rays_check = CheckButtons(ax_rays, ['Show Rays'], [True])
+        rays_check.on_clicked(on_rays_toggle)
+        
+        # Ray color selector
+        from matplotlib.widgets import RadioButtons
+        ax_color = plt.axes([0.82, 0.05, 0.12, 0.12])
+        color_radio = RadioButtons(ax_color, ('Red', 'Blue', 'Green', 'Yellow', 'Magenta', 'Cyan'))
+        color_radio.on_clicked(on_color_change)
+        
+        # Start ray animation timer
+        if show_rays[0]:
+            update_ray_animation()
         
         fig.canvas.mpl_connect('key_press_event', on_key)
         
@@ -376,8 +603,24 @@ class ChessHeatmapVisualizer:
         print("  Arrow Keys: LEFT (previous) | RIGHT (next) | SPACE (play/pause)")
         print("  Speed Slider: Adjust playback speed (100-2000 ms)")
         print("  Repeat: Toggle looping when reaching the end")
+        print("  Show Rays: Toggle attack square highlighting")
+        print("  Ray Color: Select highlight color (Red/Blue/Green/Yellow/Magenta/Cyan)")
         print("\nClose the window to exit.")
-        plt.show()
+        
+        try:
+            plt.show()
+        finally:
+            # Cleanup timers
+            if timer[0]:
+                try:
+                    timer[0].stop()
+                except:
+                    pass
+            if ray_timer[0]:
+                try:
+                    ray_timer[0].stop()
+                except:
+                    pass
 
 
 def main():
