@@ -2,7 +2,11 @@
 
 A Python-based chess game visualizer that displays games as interactive heatmaps, where each piece is represented by its point value. Features attack wave animations and multiple visualization modes.
 
-https://github.com/user-attachments/assets/chess_game_pieces.mp4
+## Demo
+
+[Watch the demo video](chess_game_pieces.mp4)
+
+![Chess Heatmap](https://raw.githubusercontent.com/Cheesecake99/CHESS_MESH_HEATMAP/main/chess_game_pieces.mp4)
 
 ## Features
 
