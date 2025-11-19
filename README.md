@@ -208,6 +208,10 @@ Potential features to add:
 - Verify the PGN format is valid
 - Check that the file path is correct
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ## Contact
 
 For questions or suggestions, please open an issue on the repository.
