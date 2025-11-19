@@ -384,7 +384,7 @@ class ChessHeatmapVisualizer:
         ray_wave_phase = [0.0]  # Current phase of the wave animation
         ray_pulse_count = [0]  # Count pulses - reset when position changes
         max_pulses = 3  # Number of times rays pulse before stopping
-        ray_color = ['red']  # Adjustable ray color
+        ray_color = ['#ff0000']  # Default to red
         ray_artists = []  # Store ray line artists for cleanup
         ray_timer = [None]  # Manual timer for ray animation
         last_position = [-1]  # Track position changes to reset pulses

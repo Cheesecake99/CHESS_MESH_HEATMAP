@@ -28,7 +28,7 @@ colors = ['#2b2b2b', '#4a4a4a', '#ffa500', '#ff6b00', '#ff0000', '#ff00ff']
 cmap = LinearSegmentedColormap.from_list('chess_heat', colors, N=100)
 
 frames_per_move = 5
-wave_color = '#ff00ff'
+wave_color = '#ff0000'  # Red
 ray_artists = []
 all_frames = []
 
