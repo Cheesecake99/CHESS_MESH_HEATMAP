@@ -28,6 +28,22 @@ class ChessHeatmapVisualizer:
         chess.KING: 4  # King has special value
     }
     
+    # Unicode chess pieces
+    PIECE_SYMBOLS = {
+        (chess.PAWN, chess.WHITE): '♙',
+        (chess.KNIGHT, chess.WHITE): '♘',
+        (chess.BISHOP, chess.WHITE): '♗',
+        (chess.ROOK, chess.WHITE): '♖',
+        (chess.QUEEN, chess.WHITE): '♕',
+        (chess.KING, chess.WHITE): '♔',
+        (chess.PAWN, chess.BLACK): '♟',
+        (chess.KNIGHT, chess.BLACK): '♞',
+        (chess.BISHOP, chess.BLACK): '♝',
+        (chess.ROOK, chess.BLACK): '♜',
+        (chess.QUEEN, chess.BLACK): '♛',
+        (chess.KING, chess.BLACK): '♚',
+    }
+    
     def __init__(self):
         self.board_states: List[np.ndarray] = []
         self.moves_list: List[str] = []
@@ -178,13 +194,14 @@ class ChessHeatmapVisualizer:
         plt.tight_layout()
         plt.show()
     
-    def animate_game(self, interval: int = 500, save_as: Optional[str] = None):
+    def animate_game(self, interval: int = 200, save_as: Optional[str] = None, show_waves: bool = True):
         """
-        Create an animated visualization of the entire game
+        Create an animated visualization of the entire game with attack waves
         
         Args:
             interval: Time between frames in milliseconds
             save_as: Optional filename to save animation (e.g., 'game.gif' or 'game.mp4')
+            show_waves: Whether to show attack wave animations (default True)
         """
         if not self.board_states:
             print("No game loaded. Please process a game first.")
@@ -197,48 +214,144 @@ class ChessHeatmapVisualizer:
         n_bins = 100
         cmap = LinearSegmentedColormap.from_list('chess_heat', colors, N=n_bins)
         
+        # Wave animation state
+        ray_artists = []
+        ray_wave_phase = [0.0]
+        wave_color = '#ff00ff'  # Magenta
+        frames_per_move = 5 if show_waves else 1  # Fewer frames for faster rendering
+        
+        def get_annotations(move_index):
+            """Get annotations matrix - piece symbols"""
+            board = self.board_objects[move_index]
+            annot_matrix = np.empty((8, 8), dtype=object)
+            
+            for row in range(8):
+                for col in range(8):
+                    rank = 7 - row
+                    file = col
+                    square = chess.square(file, rank)
+                    piece = board.piece_at(square)
+                    
+                    if piece:
+                        annot_matrix[row, col] = self.PIECE_SYMBOLS.get((piece.piece_type, piece.color), '')
+                    else:
+                        annot_matrix[row, col] = ''
+            
+            return annot_matrix
+        
+        # Create initial heatmap with colorbar
+        sns.heatmap(self.board_states[0], 
+                   annot=get_annotations(0), 
+                   fmt='',
+                   cmap=cmap,
+                   vmin=0, 
+                   vmax=10,
+                   cbar_kws={'label': 'Piece Value'},
+                   square=True,
+                   linewidths=1,
+                   linecolor='white',
+                   ax=ax,
+                   xticklabels=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+                   yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'],
+                   annot_kws={'fontsize': 32})
+        
+        def draw_waves(move_index, phase):
+            """Draw wave effects for current move"""
+            nonlocal ray_artists
+            
+            # Clear previous wave artists
+            for artist in ray_artists:
+                try:
+                    artist.remove()
+                except:
+                    pass
+            ray_artists = []
+            
+            if move_index >= len(self.board_objects):
+                return
+            
+            # Get attack rays for current position
+            board = self.board_objects[move_index]
+            attack_rays = self.get_attack_rays(board)
+            
+            if not attack_rays:
+                return
+            
+            # Draw waves along each attack path
+            for (from_pos, to_pos) in attack_rays:
+                path_squares = self.get_path_squares(from_pos, to_pos)
+                
+                for idx, (row, col) in enumerate(path_squares):
+                    wave_delay = idx / max(len(path_squares), 1)
+                    phase_offset = (phase - wave_delay) % 1.0
+                    intensity = 0.3 + 0.5 * np.sin(phase_offset * 2 * np.pi)
+                    
+                    if intensity > 0.35:
+                        rect = plt.Rectangle((col, row), 1, 1, 
+                                            facecolor=wave_color, 
+                                            alpha=intensity * 0.6,
+                                            zorder=5,
+                                            linewidth=0)
+                        ax.add_patch(rect)
+                        ray_artists.append(rect)
+        
         def update(frame):
-            ax.clear()
+            move_index = frame // frames_per_move
+            wave_frame = frame % frames_per_move
             
-            # Plot heatmap for current frame
-            sns.heatmap(self.board_states[frame], 
-                       annot=True, 
-                       fmt='.0f',
-                       cmap=cmap,
-                       vmin=0, 
-                       vmax=10,
-                       cbar_kws={'label': 'Piece Value'},
-                       square=True,
-                       linewidths=1,
-                       linecolor='white',
-                       ax=ax,
-                       xticklabels=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
-                       yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'])
+            # Only redraw board on first wave frame of each move
+            if wave_frame == 0:
+                # Remove old heatmap elements
+                for artist in ax.collections + ax.texts:
+                    artist.remove()
+                
+                # Redraw heatmap without colorbar
+                sns.heatmap(self.board_states[move_index], 
+                           annot=get_annotations(move_index), 
+                           fmt='',
+                           cmap=cmap,
+                           vmin=0, 
+                           vmax=10,
+                           cbar=False,
+                           square=True,
+                           linewidths=1,
+                           linecolor='white',
+                           ax=ax,
+                           xticklabels=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+                           yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'],
+                           annot_kws={'fontsize': 32})
+                
+                ax.set_xlabel('File (a-h)', fontsize=12)
+                ax.set_ylabel('Rank (8-1)', fontsize=12)
+                ax.set_title(f'Chess Board Heatmap - {self.moves_list[move_index]}', 
+                            fontsize=14, fontweight='bold')
             
-            # Set labels
-            ax.set_xlabel('File (a-h)', fontsize=12)
-            ax.set_ylabel('Rank (8-1)', fontsize=12)
-            ax.set_title(f'Chess Board Heatmap - {self.moves_list[frame]}', 
-                        fontsize=14, fontweight='bold')
+            # Draw wave animation for this frame (if enabled)
+            if show_waves and frames_per_move > 1:
+                ray_wave_phase[0] = wave_frame / frames_per_move
+                draw_waves(move_index, ray_wave_phase[0])
             
             return ax,
         
+        total_frames = len(self.board_states) * frames_per_move
         anim = animation.FuncAnimation(fig, update, 
-                                      frames=len(self.board_states),
+                                      frames=total_frames,
                                       interval=interval,
-                                      repeat=True,
+                                      repeat=False,
                                       blit=False)
         
         if save_as:
+            print(f"Rendering {total_frames} frames...")
             if save_as.endswith('.gif'):
                 anim.save(save_as, writer='pillow', fps=1000//interval)
                 print(f"Animation saved as {save_as}")
             elif save_as.endswith('.mp4'):
                 anim.save(save_as, writer='ffmpeg', fps=1000//interval)
                 print(f"Animation saved as {save_as}")
-        
-        plt.tight_layout()
-        plt.show()
+            plt.close(fig)
+        else:
+            plt.tight_layout()
+            plt.show()
     
     def step_through_game(self):
         """Interactive step-through of the game"""
@@ -267,6 +380,7 @@ class ChessHeatmapVisualizer:
         
         # Ray wave animation state
         show_rays = [True]
+        show_pieces = [True]  # Toggle between piece symbols and values
         ray_wave_phase = [0.0]  # Current phase of the wave animation
         ray_pulse_count = [0]  # Count pulses - reset when position changes
         max_pulses = 3  # Number of times rays pulse before stopping
@@ -275,10 +389,35 @@ class ChessHeatmapVisualizer:
         ray_timer = [None]  # Manual timer for ray animation
         last_position = [-1]  # Track position changes to reset pulses
         
+        def get_annotations(move_index):
+            """Get annotations matrix - either piece symbols or values"""
+            if not show_pieces[0]:
+                # Return values as strings
+                return self.board_states[move_index].astype(str)
+            
+            # Build piece symbol matrix
+            board = self.board_objects[move_index]
+            annot_matrix = np.empty((8, 8), dtype=object)
+            
+            for row in range(8):
+                for col in range(8):
+                    # Convert to chess square
+                    rank = 7 - row
+                    file = col
+                    square = chess.square(file, rank)
+                    piece = board.piece_at(square)
+                    
+                    if piece:
+                        annot_matrix[row, col] = self.PIECE_SYMBOLS.get((piece.piece_type, piece.color), '')
+                    else:
+                        annot_matrix[row, col] = ''
+            
+            return annot_matrix
+        
         # Create initial heatmap with colorbar
         initial_heatmap = sns.heatmap(self.board_states[0], 
-                   annot=True, 
-                   fmt='.0f',
+                   annot=get_annotations(0), 
+                   fmt='',
                    cmap=cmap,
                    vmin=0, 
                    vmax=10,
@@ -288,7 +427,8 @@ class ChessHeatmapVisualizer:
                    linecolor='white',
                    ax=ax,
                    xticklabels=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
-                   yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'])
+                   yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'],
+                   annot_kws={'fontsize': 32})
         
         ax.set_xlabel('File (a-h)', fontsize=12)
         ax.set_ylabel('Rank (8-1)', fontsize=12)
@@ -401,8 +541,8 @@ class ChessHeatmapVisualizer:
                 
                 # Redraw heatmap
                 sns.heatmap(self.board_states[current_move[0]], 
-                           annot=True, 
-                           fmt='.0f',
+                           annot=get_annotations(current_move[0]), 
+                           fmt='',
                            cmap=cmap,
                            vmin=0, 
                            vmax=10,
@@ -412,7 +552,8 @@ class ChessHeatmapVisualizer:
                            linecolor='white',
                            ax=ax,
                            xticklabels=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
-                           yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'])
+                           yticklabels=['8', '7', '6', '5', '4', '3', '2', '1'],
+                           annot_kws={'fontsize': 32})
                 
                 ax.set_xlabel('File (a-h)', fontsize=12)
                 ax.set_ylabel('Rank (8-1)', fontsize=12)
@@ -585,6 +726,16 @@ class ChessHeatmapVisualizer:
         rays_check = CheckButtons(ax_rays, ['Show Rays'], [True])
         rays_check.on_clicked(on_rays_toggle)
         
+        # Show pieces checkbox
+        ax_pieces = plt.axes([0.65, 0.16, 0.15, 0.04])
+        pieces_check = CheckButtons(ax_pieces, ['Show Pieces'], [True])
+        
+        def on_pieces_toggle(label):
+            show_pieces[0] = not show_pieces[0]
+            update_plot()
+        
+        pieces_check.on_clicked(on_pieces_toggle)
+        
         # Ray color selector
         from matplotlib.widgets import RadioButtons
         ax_color = plt.axes([0.82, 0.05, 0.12, 0.12])
@@ -603,6 +754,7 @@ class ChessHeatmapVisualizer:
         print("  Arrow Keys: LEFT (previous) | RIGHT (next) | SPACE (play/pause)")
         print("  Speed Slider: Adjust playback speed (100-2000 ms)")
         print("  Repeat: Toggle looping when reaching the end")
+        print("  Show Pieces: Toggle between piece symbols and values")
         print("  Show Rays: Toggle attack square highlighting")
         print("  Ray Color: Select highlight color (Red/Blue/Green/Yellow/Magenta/Cyan)")
         print("\nClose the window to exit.")
