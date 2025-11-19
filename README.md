@@ -1,16 +1,22 @@
 # Chess Heatmap Visualizer
 
-A Python program that visualizes chess games as heatmaps, where each square's intensity represents the value of the piece occupying it.
+A Python-based chess game visualizer that displays games as interactive heatmaps, where each piece is represented by its point value. Features attack wave animations and multiple visualization modes.
+
+https://github.com/user-attachments/assets/chess_game_pieces.mp4
 
 ## Features
 
 - **Piece Value Mapping**: Each piece has a numerical value (Queen=10, Rook=5, Bishop=3, Knight=3, Pawn=1, King=4)
+- **Unicode Piece Symbols**: Display pieces as ♙♘♗♖♕♔ or numerical values
+- **Attack Wave Animations**: Visual effects showing possible captures with traveling wave patterns
 - **PGN Support**: Load games from Chess.com or any standard PGN format
 - **Multiple Visualization Modes**:
   - Static view of any position
   - Animated playback of entire game
   - Interactive step-through with keyboard controls
+  - Export to MP4/GIF video files
 - **Heatmap Intensity**: Color-coded visualization showing piece concentrations
+- **Full Playback Controls**: Buttons, sliders, and keyboard shortcuts
 
 ## Installation
 
@@ -18,27 +24,40 @@ A Python program that visualizes chess games as heatmaps, where each square's in
 
 2. Install required dependencies:
 ```bash
-pip install chess matplotlib numpy seaborn
+pip install python-chess matplotlib numpy seaborn imageio imageio-ffmpeg
 ```
 
 Or use the virtual environment (already set up):
 ```bash
-.venv\Scripts\activate
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Unix/MacOS
 ```
 
 ## Usage
 
-### Quick Start
+### Quick Start - Interactive Mode
 
-Run the main demo:
+Run the test script to see the interactive visualizer:
 ```bash
-python chess_heatmap.py
+python test_interactive.py
 ```
 
-Run examples with different modes:
+**Controls:**
+- **Arrow Keys**: LEFT (previous) | RIGHT (next) | SPACE (play/pause)
+- **Buttons**: First | Prev | Play/Pause | Next | Last
+- **Speed Slider**: Adjust playback speed (100-2000 ms)
+- **Show Pieces**: Toggle between piece symbols (♙♘♗♖♕♔) and values (1,3,5,10)
+- **Show Rays**: Toggle attack square highlighting with wave effects
+- **Ray Color**: Select highlight color (Red/Blue/Green/Yellow/Magenta/Cyan)
+
+### Record to Video
+
+Generate an MP4 video of your game:
 ```bash
-python examples.py
+python record_game.py
 ```
+
+This creates `chess_game_pieces.mp4` with all wave animations included.
 
 ### Loading Games
 
